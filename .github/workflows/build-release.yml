@@ -1,0 +1,97 @@
+name: Build and Release Mnemonic
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to release (e.g., v2.0.0) — must already exist in the repo'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      # Prefer the tag name when building on a tag push; otherwise use the workflow input
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Show Python and PyInstaller versions
+        run: |
+          python --version
+          python -c "import PyInstaller, sys; print('PyInstaller', PyInstaller.__version__)"
+
+      - name: Build single-file binary with PyInstaller
+        run: |
+          pyinstaller --onefile mnemonic.py
+
+      - name: Rename artifact with OS and version (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release
+          cp dist/mnemonic ./release/mnemonic-${{ env.VERSION }}-linux-x64
+
+      - name: Rename artifact with OS and version (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir release
+          copy dist\mnemonic.exe release\mnemonic-${{ env.VERSION }}-windows-x64.exe
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemonic-${{ matrix.os }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release and Upload Assets
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: List downloaded artifacts (for debugging)
+        run: |
+          ls -R ./artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Mnemonic ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/mnemonic-${{ env.VERSION }}-linux-x64
+            artifacts/**/mnemonic-${{ env.VERSION }}-windows-x64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
