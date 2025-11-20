@@ -34,7 +34,7 @@ Note: Using `-p/--password` requires internet access to reach Dinopass.
 
 
 __author__ = "Matt Lowe <marl.scot.1@googlemail.com"
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 nato = {
     " ": "Space",
